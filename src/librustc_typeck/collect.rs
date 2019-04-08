@@ -1134,33 +1134,13 @@ fn report_assoc_ty_on_inherent_impl<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>, span:
 }
 
 fn type_of<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>, def_id: DefId) -> Ty<'tcx> {
-    checked_type_of(tcx, def_id, true).unwrap()
-}
-
-/// Same as [`type_of`] but returns [`Option`] instead of failing.
-///
-/// If you want to fail anyway, you can set the `fail` parameter to true, but in this case,
-/// you'd better just call [`type_of`] directly.
-pub fn checked_type_of<'a, 'tcx>(
-    tcx: TyCtxt<'a, 'tcx, 'tcx>,
-    def_id: DefId,
-    fail: bool,
-) -> Option<Ty<'tcx>> {
     use rustc::hir::*;
 
-    let hir_id = match tcx.hir().as_local_hir_id(def_id) {
-        Some(hir_id) => hir_id,
-        None => {
-            if !fail {
-                return None;
-            }
-            bug!("invalid node");
-        }
-    };
+    let hir_id = tcx.hir().as_local_hir_id(def_id).unwrap();
 
     let icx = ItemCtxt::new(tcx, def_id);
 
-    Some(match tcx.hir().get_by_hir_id(hir_id) {
+    match tcx.hir().get_by_hir_id(hir_id) {
         Node::TraitItem(item) => match item.node {
             TraitItemKind::Method(..) => {
                 let substs = InternalSubsts::identity_for_item(tcx, def_id);
@@ -1168,9 +1148,6 @@ pub fn checked_type_of<'a, 'tcx>(
             }
             TraitItemKind::Const(ref ty, _) | TraitItemKind::Type(_, Some(ref ty)) => icx.to_ty(ty),
             TraitItemKind::Type(_, None) => {
-                if !fail {
-                    return None;
-                }
                 span_bug!(item.span, "associated type missing default");
             }
         },
@@ -1252,9 +1229,6 @@ pub fn checked_type_of<'a, 'tcx>(
                 | ItemKind::GlobalAsm(..)
                 | ItemKind::ExternCrate(..)
                 | ItemKind::Use(..) => {
-                    if !fail {
-                        return None;
-                    }
                     span_bug!(
                         item.span,
                         "compute_type_of_item: unexpected item type: {:?}",
@@ -1293,7 +1267,7 @@ pub fn checked_type_of<'a, 'tcx>(
             ..
         }) => {
             if gen.is_some() {
-                return Some(tcx.typeck_tables_of(def_id).node_type(hir_id));
+                return tcx.typeck_tables_of(def_id).node_type(hir_id);
             }
 
             let substs = ty::ClosureSubsts {
@@ -1371,9 +1345,6 @@ pub fn checked_type_of<'a, 'tcx>(
                             }
                             // Sanity check to make sure everything is as expected.
                             if !found_const {
-                                if !fail {
-                                    return None;
-                                }
                                 bug!("no arg matching AnonConst in path")
                             }
                             match path.def {
@@ -1389,37 +1360,24 @@ pub fn checked_type_of<'a, 'tcx>(
                                     for param in &generics.params {
                                         if let ty::GenericParamDefKind::Const = param.kind {
                                             if param_index == arg_index {
-                                                return Some(tcx.type_of(param.def_id));
+                                                return tcx.type_of(param.def_id);
                                             }
                                             param_index += 1;
                                         }
                                     }
                                     // This is no generic parameter associated with the arg. This is
                                     // probably from an extra arg where one is not needed.
-                                    return Some(tcx.types.err);
+                                    return tcx.types.err;
                                 }
                                 Def::Err => tcx.types.err,
-                                x => {
-                                    if !fail {
-                                        return None;
-                                    }
-                                    bug!("unexpected const parent path def {:?}", x);
-                                }
+                                x => bug!("unexpected const parent path def {:?}", x),
                             }
                         }
-                        x => {
-                            if !fail {
-                                return None;
-                            }
-                            bug!("unexpected const parent path {:?}", x);
-                        }
+                        x => bug!("unexpected const parent path {:?}", x),
                     }
                 }
 
                 x => {
-                    if !fail {
-                        return None;
-                    }
                     bug!("unexpected const parent in type_of_def_id(): {:?}", x);
                 }
             }
@@ -1430,21 +1388,13 @@ pub fn checked_type_of<'a, 'tcx>(
             hir::GenericParamKind::Const { ref ty, .. } => {
                 icx.to_ty(ty)
             }
-            x => {
-                if !fail {
-                    return None;
-                }
-                bug!("unexpected non-type Node::GenericParam: {:?}", x)
-            },
+            x => bug!("unexpected non-type Node::GenericParam: {:?}", x),
         },
 
         x => {
-            if !fail {
-                return None;
-            }
             bug!("unexpected sort of node in type_of_def_id(): {:?}", x);
         }
-    })
+    }
 }
 
 fn find_existential_constraints<'a, 'tcx>(
