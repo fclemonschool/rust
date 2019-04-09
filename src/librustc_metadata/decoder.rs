@@ -617,18 +617,20 @@ impl<'a, 'tcx> CrateMetadata {
         tcx.alloc_adt_def(did, kind, variants, repr)
     }
 
-    pub fn get_predicates(&self,
-                          item_id: DefIndex,
-                          tcx: TyCtxt<'a, 'tcx, 'tcx>)
-                          -> ty::GenericPredicates<'tcx> {
-        self.entry(item_id).predicates.unwrap().decode((self, tcx))
+    pub fn get_explicit_predicates(
+        &self,
+        item_id: DefIndex,
+        tcx: TyCtxt<'a, 'tcx, 'tcx>,
+    ) -> ty::GenericPredicates<'tcx> {
+        self.entry(item_id).explicit_predicates.unwrap().decode((self, tcx))
     }
 
-    pub fn get_predicates_defined_on(&self,
-                                   item_id: DefIndex,
-                                   tcx: TyCtxt<'a, 'tcx, 'tcx>)
-                                   -> ty::GenericPredicates<'tcx> {
-        self.entry(item_id).predicates_defined_on.unwrap().decode((self, tcx))
+    pub fn get_inferred_outlives(
+        &self,
+        item_id: DefIndex,
+        tcx: TyCtxt<'a, 'tcx, 'tcx>,
+    ) -> Vec<ty::Predicate<'tcx>> {
+        self.entry(item_id).inferred_outlives.unwrap().decode((self, tcx))
     }
 
     pub fn get_super_predicates(&self,

@@ -90,10 +90,26 @@ pub fn encode_with_shorthand<E, T, M>(encoder: &mut E,
     Ok(())
 }
 
-pub fn encode_predicates<'tcx, E, C>(encoder: &mut E,
-                                     predicates: &ty::GenericPredicates<'tcx>,
-                                     cache: C)
-                                     -> Result<(), E::Error>
+pub fn encode_predicates<'tcx, E, C>(
+    encoder: &mut E,
+    predicates: &[ty::Predicate<'tcx>],
+    cache: C,
+) -> Result<(), E::Error>
+    where E: TyEncoder,
+          C: for<'b> Fn(&'b mut E) -> &'b mut FxHashMap<ty::Predicate<'tcx>, usize>,
+{
+    predicates.len().encode(encoder)?;
+    for predicate in predicates {
+        encode_with_shorthand(encoder, predicate, &cache)?;
+    }
+    Ok(())
+}
+
+pub fn encode_generic_predicates<'tcx, E, C>(
+    encoder: &mut E,
+    predicates: &ty::GenericPredicates<'tcx>,
+    cache: C,
+) -> Result<(), E::Error>
     where E: TyEncoder,
           C: for<'b> Fn(&'b mut E) -> &'b mut FxHashMap<ty::Predicate<'tcx>, usize>,
 {
@@ -160,8 +176,31 @@ pub fn decode_ty<'a, 'tcx, D>(decoder: &mut D) -> Result<Ty<'tcx>, D::Error>
 }
 
 #[inline]
-pub fn decode_predicates<'a, 'tcx, D>(decoder: &mut D)
-                                      -> Result<ty::GenericPredicates<'tcx>, D::Error>
+pub fn decode_predicates<'a, 'tcx, D>(
+    decoder: &mut D,
+) -> Result<Vec<ty::Predicate<'tcx>>, D::Error>
+    where D: TyDecoder<'a, 'tcx>,
+          'tcx: 'a,
+{
+    (0..decoder.read_usize()?).map(|_| {
+        // Handle shorthands first, if we have an usize > 0x80.
+        if decoder.positioned_at_shorthand() {
+            let pos = decoder.read_usize()?;
+            assert!(pos >= SHORTHAND_OFFSET);
+            let shorthand = pos - SHORTHAND_OFFSET;
+
+            decoder.with_position(shorthand, ty::Predicate::decode)
+        } else {
+            ty::Predicate::decode(decoder)
+        }
+    })
+    .collect()
+}
+
+#[inline]
+pub fn decode_generic_predicates<'a, 'tcx, D>(
+    decoder: &mut D,
+) -> Result<ty::GenericPredicates<'tcx>, D::Error>
     where D: TyDecoder<'a, 'tcx>,
           'tcx: 'a,
 {
@@ -336,11 +375,19 @@ macro_rules! implement_ty_decoder {
                 }
             }
 
+            impl<$($typaram),*> SpecializedDecoder<Vec<ty::Predicate<'tcx>>>
+            for $DecoderName<$($typaram),*> {
+                fn specialized_decode(&mut self)
+                                      -> Result<Vec<ty::Predicate<'tcx>>, Self::Error> {
+                    decode_predicates(self)
+                }
+            }
+
             impl<$($typaram),*> SpecializedDecoder<ty::GenericPredicates<'tcx>>
             for $DecoderName<$($typaram),*> {
                 fn specialized_decode(&mut self)
                                       -> Result<ty::GenericPredicates<'tcx>, Self::Error> {
-                    decode_predicates(self)
+                    decode_generic_predicates(self)
                 }
             }
 
