@@ -203,11 +203,19 @@ impl<'a, 'tcx> SpecializedEncoder<interpret::AllocId> for EncodeContext<'a, 'tcx
     }
 }
 
+impl<'a, 'tcx> SpecializedEncoder<Vec<ty::Predicate<'tcx>>> for EncodeContext<'a, 'tcx> {
+    fn specialized_encode(&mut self,
+                          predicates: &Vec<ty::Predicate<'tcx>>)
+                          -> Result<(), Self::Error> {
+        ty_codec::encode_predicates(self, predicates, |ecx| &mut ecx.predicate_shorthands)
+    }
+}
+
 impl<'a, 'tcx> SpecializedEncoder<ty::GenericPredicates<'tcx>> for EncodeContext<'a, 'tcx> {
     fn specialized_encode(&mut self,
                           predicates: &ty::GenericPredicates<'tcx>)
                           -> Result<(), Self::Error> {
-        ty_codec::encode_predicates(self, predicates, |ecx| &mut ecx.predicate_shorthands)
+        ty_codec::encode_generic_predicates(self, predicates, |ecx| &mut ecx.predicate_shorthands)
     }
 }
 
@@ -613,7 +621,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
                 LazySeq::empty()
             },
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: Some(self.encode_predicates_defined_on(def_id)),
+            explicit_predicates: Some(self.encode_explicit_predicates(def_id)),
+            inferred_outlives: Some(self.encode_inferred_outlives(def_id)),
 
             mir: self.encode_optimized_mir(def_id),
         }
@@ -668,7 +677,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
                 LazySeq::empty()
             },
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: Some(self.encode_predicates_defined_on(def_id)),
+            explicit_predicates: Some(self.encode_explicit_predicates(def_id)),
+            inferred_outlives: Some(self.encode_inferred_outlives(def_id)),
 
             mir: self.encode_optimized_mir(def_id),
         }
@@ -705,7 +715,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
             inherent_impls: LazySeq::empty(),
             variances: LazySeq::empty(),
             generics: None,
-            predicates_defined_on: None,
+            explicit_predicates: None,
+            inferred_outlives: None,
 
             mir: None
         }
@@ -745,7 +756,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
             inherent_impls: LazySeq::empty(),
             variances: LazySeq::empty(),
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: Some(self.encode_predicates_defined_on(def_id)),
+            explicit_predicates: Some(self.encode_explicit_predicates(def_id)),
+            inferred_outlives: Some(self.encode_inferred_outlives(def_id)),
 
             mir: None,
         }
@@ -804,7 +816,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
                 LazySeq::empty()
             },
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: Some(self.encode_predicates_defined_on(def_id)),
+            explicit_predicates: Some(self.encode_explicit_predicates(def_id)),
+            inferred_outlives: Some(self.encode_inferred_outlives(def_id)),
 
             mir: self.encode_optimized_mir(def_id),
         }
@@ -816,10 +829,16 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
         self.lazy(tcx.generics_of(def_id))
     }
 
-    fn encode_predicates_defined_on(&mut self, def_id: DefId) -> Lazy<ty::GenericPredicates<'tcx>> {
-        debug!("IsolatedEncoder::encode_predicates_defined_on({:?})", def_id);
+    fn encode_explicit_predicates(&mut self, def_id: DefId) -> Lazy<ty::GenericPredicates<'tcx>> {
+        debug!("IsolatedEncoder::encode_explicit_predicates({:?})", def_id);
         let tcx = self.tcx;
-        self.lazy(&tcx.predicates_defined_on(def_id))
+        self.lazy(&tcx.explicit_predicates_of(def_id))
+    }
+
+    fn encode_inferred_outlives(&mut self, def_id: DefId) -> Lazy<Vec<ty::Predicate<'tcx>>> {
+        debug!("IsolatedEncoder::encode_inferred_outlives({:?})", def_id);
+        let tcx = self.tcx;
+        self.lazy(&tcx.inferred_outlives_of(def_id))
     }
 
     fn encode_info_for_trait_item(&mut self, def_id: DefId) -> Entry<'tcx> {
@@ -913,7 +932,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
                 LazySeq::empty()
             },
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: Some(self.encode_predicates_defined_on(def_id)),
+            explicit_predicates: Some(self.encode_explicit_predicates(def_id)),
+            inferred_outlives: Some(self.encode_inferred_outlives(def_id)),
 
             mir: self.encode_optimized_mir(def_id),
         }
@@ -1011,7 +1031,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
                 LazySeq::empty()
             },
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: Some(self.encode_predicates_defined_on(def_id)),
+            explicit_predicates: Some(self.encode_explicit_predicates(def_id)),
+            inferred_outlives: Some(self.encode_inferred_outlives(def_id)),
 
             mir: if mir { self.encode_optimized_mir(def_id) } else { None },
         }
@@ -1267,7 +1288,7 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
                 hir::ItemKind::TraitAlias(..) => Some(self.encode_generics(def_id)),
                 _ => None,
             },
-            predicates_defined_on: match item.node {
+            explicit_predicates: match item.node {
                 hir::ItemKind::Static(..) |
                 hir::ItemKind::Const(..) |
                 hir::ItemKind::Fn(..) |
@@ -1278,7 +1299,21 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
                 hir::ItemKind::Impl(..) |
                 hir::ItemKind::Existential(..) |
                 hir::ItemKind::Trait(..) |
-                hir::ItemKind::TraitAlias(..) => Some(self.encode_predicates_defined_on(def_id)),
+                hir::ItemKind::TraitAlias(..) => Some(self.encode_explicit_predicates(def_id)),
+                _ => None,
+            },
+            inferred_outlives: match item.node {
+                hir::ItemKind::Static(..) |
+                hir::ItemKind::Const(..) |
+                hir::ItemKind::Fn(..) |
+                hir::ItemKind::Ty(..) |
+                hir::ItemKind::Enum(..) |
+                hir::ItemKind::Struct(..) |
+                hir::ItemKind::Union(..) |
+                hir::ItemKind::Impl(..) |
+                hir::ItemKind::Existential(..) |
+                hir::ItemKind::Trait(..) |
+                hir::ItemKind::TraitAlias(..) => Some(self.encode_inferred_outlives(def_id)),
                 _ => None,
             },
 
@@ -1328,7 +1363,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
             inherent_impls: LazySeq::empty(),
             variances: LazySeq::empty(),
             generics: None,
-            predicates_defined_on: None,
+            explicit_predicates: None,
+            inferred_outlives: None,
             mir: None,
         }
     }
@@ -1352,7 +1388,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
             inherent_impls: LazySeq::empty(),
             variances: LazySeq::empty(),
             generics: None,
-            predicates_defined_on: None,
+            explicit_predicates: None,
+            inferred_outlives: None,
 
             mir: None,
         }
@@ -1411,7 +1448,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
             inherent_impls: LazySeq::empty(),
             variances: LazySeq::empty(),
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: None,
+            explicit_predicates: None,
+            inferred_outlives: None,
 
             mir: self.encode_optimized_mir(def_id),
         }
@@ -1438,7 +1476,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
             inherent_impls: LazySeq::empty(),
             variances: LazySeq::empty(),
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: Some(self.encode_predicates_defined_on(def_id)),
+            explicit_predicates: Some(self.encode_explicit_predicates(def_id)),
+            inferred_outlives: Some(self.encode_inferred_outlives(def_id)),
 
             mir: self.encode_optimized_mir(def_id),
         }
@@ -1640,7 +1679,8 @@ impl<'a, 'b: 'a, 'tcx: 'b> IsolatedEncoder<'a, 'b, 'tcx> {
                 _ => LazySeq::empty(),
             },
             generics: Some(self.encode_generics(def_id)),
-            predicates_defined_on: Some(self.encode_predicates_defined_on(def_id)),
+            explicit_predicates: Some(self.encode_explicit_predicates(def_id)),
+            inferred_outlives: Some(self.encode_inferred_outlives(def_id)),
 
             mir: None,
         }

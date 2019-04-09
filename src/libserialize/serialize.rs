@@ -901,7 +901,7 @@ impl<T: UseSpecializedDecodable> Decodable for T {
     }
 }
 
-// Can't avoid specialization for &T and Box<T> impls,
+// Can't avoid specialization for &T, Box<T> and Vec<T> impls,
 // as proxy impls on them are blankets that conflict
 // with the Encodable and Decodable impls above,
 // which only have `default` on their methods
@@ -910,5 +910,7 @@ impl<T: UseSpecializedDecodable> Decodable for T {
 // more complex lattice model for specialization.
 impl<'a, T: ?Sized + Encodable> UseSpecializedEncodable for &'a T {}
 impl<T: ?Sized + Encodable> UseSpecializedEncodable for Box<T> {}
+impl<T: Encodable> UseSpecializedEncodable for Vec<T> {}
 impl<T: Decodable> UseSpecializedDecodable for Box<T> {}
+impl<T: Decodable> UseSpecializedDecodable for Vec<T> {}
 

@@ -265,7 +265,12 @@ pub struct Entry<'tcx> {
     pub inherent_impls: LazySeq<DefIndex>,
     pub variances: LazySeq<ty::Variance>,
     pub generics: Option<Lazy<ty::Generics>>,
-    pub predicates_defined_on: Option<Lazy<ty::GenericPredicates<'tcx>>>,
+    pub explicit_predicates: Option<Lazy<ty::GenericPredicates<'tcx>>>,
+    // FIXME(eddyb) this would ideally be `LazySeq` but `ty::Predicate`
+    // doesn't handle shorthands in its own (de)serialization impls,
+    // as it's an `enum` for which we want to derive (de)serialization,
+    // so the `ty::codec` APIs handle the whole `Vec` at once.
+    pub inferred_outlives: Option<Lazy<Vec<ty::Predicate<'tcx>>>>,
 
     pub mir: Option<Lazy<mir::Mir<'tcx>>>,
 }
@@ -282,7 +287,8 @@ impl_stable_hash_for!(struct Entry<'tcx> {
     inherent_impls,
     variances,
     generics,
-    predicates_defined_on,
+    explicit_predicates,
+    inferred_outlives,
     mir
 });
 

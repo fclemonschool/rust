@@ -891,6 +891,19 @@ impl<'enc, 'a, 'tcx, E> SpecializedEncoder<ty::Ty<'tcx>> for CacheEncoder<'enc, 
     }
 }
 
+impl<'enc, 'a, 'tcx, E> SpecializedEncoder<Vec<ty::Predicate<'tcx>>>
+    for CacheEncoder<'enc, 'a, 'tcx, E>
+    where E: 'enc + ty_codec::TyEncoder
+{
+    #[inline]
+    fn specialized_encode(&mut self,
+                          predicates: &Vec<ty::Predicate<'tcx>>)
+                          -> Result<(), Self::Error> {
+        ty_codec::encode_predicates(self, predicates,
+            |encoder| &mut encoder.predicate_shorthands)
+    }
+}
+
 impl<'enc, 'a, 'tcx, E> SpecializedEncoder<ty::GenericPredicates<'tcx>>
     for CacheEncoder<'enc, 'a, 'tcx, E>
     where E: 'enc + ty_codec::TyEncoder
@@ -899,7 +912,7 @@ impl<'enc, 'a, 'tcx, E> SpecializedEncoder<ty::GenericPredicates<'tcx>>
     fn specialized_encode(&mut self,
                           predicates: &ty::GenericPredicates<'tcx>)
                           -> Result<(), Self::Error> {
-        ty_codec::encode_predicates(self, predicates,
+        ty_codec::encode_generic_predicates(self, predicates,
             |encoder| &mut encoder.predicate_shorthands)
     }
 }
